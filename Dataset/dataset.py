@@ -72,6 +72,8 @@ class Dataset(object):
         lines = linecache.getlines(self.graph_file)
         lines = [line.rstrip('\n') for line in lines]
         for line in lines:
+            if not line.strip():
+                continue
             line = line.split()
             idx1 = node_map[line[0]]
             idx2 = node_map[line[1]]
@@ -86,6 +88,8 @@ class Dataset(object):
         lines = linecache.getlines(self.walks_file)
         lines = [line.rstrip('\n') for line in lines]
         for line in lines:
+            if not line.strip():
+                continue
             line = line.split()
             idx1 = node_map[line[0]]
             idx2 = node_map[line[1]]
@@ -93,5 +97,4 @@ class Dataset(object):
             W[idx1, idx2] = 1.0
 
         return A, X, W, L, num_classes
-
 
