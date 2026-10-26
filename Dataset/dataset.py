@@ -37,7 +37,7 @@ class Dataset(object):
         Y = []
         cnt = 0
         for idx, line in enumerate(lines):
-            line = line.split(' ')
+            line = line.split()
             node_map[line[0]] = idx
             y = []
             for label in line[1:]:
@@ -62,7 +62,7 @@ class Dataset(object):
         X = np.zeros((num_nodes, num_features), dtype=np.float32)
 
         for line in lines:
-            line = line.split(' ')
+            line = line.split()
             node_id = node_map[line[0]]
             X[node_id] = np.array([float(x) for x in line[1:]])
 
@@ -72,11 +72,12 @@ class Dataset(object):
         lines = linecache.getlines(self.graph_file)
         lines = [line.rstrip('\n') for line in lines]
         for line in lines:
-            line = line.split(' ')
+            line = line.split()
             idx1 = node_map[line[0]]
             idx2 = node_map[line[1]]
-            A[idx2, idx1] = 1.0
-            A[idx1, idx2] = 1.0
+            weight = float(line[2]) if len(line) > 2 else 1.0
+            A[idx2, idx1] = max(A[idx2, idx1], weight)
+            A[idx1, idx2] = max(A[idx1, idx2], weight)
 
 
 
@@ -85,13 +86,12 @@ class Dataset(object):
         lines = linecache.getlines(self.walks_file)
         lines = [line.rstrip('\n') for line in lines]
         for line in lines:
-            line = line.split(' ')
+            line = line.split()
             idx1 = node_map[line[0]]
             idx2 = node_map[line[1]]
             W[idx2, idx1] = 1.0
             W[idx1, idx2] = 1.0
 
         return A, X, W, L, num_classes
-
 
 
