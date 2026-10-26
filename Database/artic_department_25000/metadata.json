@@ -1,10 +1,10 @@
 {
-  "processed_artworks": 2337,
-  "dropped_records": 22663,
-  "classes": 8,
-  "k": 8,
+  "processed_artworks": 24944,
+  "dropped_records": 56,
+  "classes": 15,
+  "k": 15,
   "features": 128,
-  "edges": 19076,
+  "edges": 175484,
   "label_field": "department_title",
   "feature_fields": [
     "material_titles",
@@ -13,30 +13,30 @@
     "medium_display"
   ],
   "optional_feature_coverage": {
-    "subject_titles": 0.3072314933675653,
-    "style_titles": 0.3855370132648695
+    "subject_titles": 0.23203976908274535,
+    "style_titles": 0.4741821680564464
   },
   "min_optional_feature_coverage": 0.5,
   "class_counts": {
-    "Applied Arts of Europe": 313,
-    "Architecture and Design": 305,
-    "Arts of Africa": 218,
-    "Arts of Asia": 367,
-    "Contemporary Art": 129,
-    "Photography and Media": 379,
-    "Prints and Drawings": 379,
-    "Textiles": 247
+    "AIC Archives": 176,
+    "Applied Arts of Europe": 718,
+    "Architecture and Design": 1542,
+    "Arts of Africa": 424,
+    "Arts of Asia": 8116,
+    "Arts of Greece, Rome, and Byzantium": 199,
+    "Arts of the Americas": 211,
+    "Contemporary Art": 613,
+    "Modern Art": 265,
+    "Modern and Contemporary Art": 2,
+    "Painting and Sculpture of Europe": 804,
+    "Photography and Media": 4269,
+    "Prints and Drawings": 6830,
+    "Ryerson and Burnham Libraries Special Collections": 26,
+    "Textiles": 749
   },
-  "class_balance": {
-    "min_classes": 6,
-    "max_classes": 8,
-    "min_class_samples": 100,
-    "max_class_ratio": 3.0
-  },
-  "artist_limits": {
-    "min_artworks": 11,
-    "max_artworks": 200,
-    "largest_artist_count": 155
+  "selection": {
+    "department_filtering": "none",
+    "processed_limit": 25000
   },
   "edge_endpoints": {
     "source": "source_node_index/source_artwork_id",
@@ -46,5 +46,5 @@
   "feature_max": 128,
   "max_neighbors_per_node": 20,
   "graph_strategy": "same_artist_cyclic_neighbors",
-  "created_at_utc": "2026-10-26T12:51:20.813171+00:00"
+  "created_at_utc": "2026-10-26T15:57:28.677309+00:00"
 }

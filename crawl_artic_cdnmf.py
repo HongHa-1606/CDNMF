@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import html
 import json
 import logging
@@ -364,182 +363,6 @@ def read_artwork_csv(path: Path, limit: int | None = None) -> Iterator[dict[str,
             yield record
 
 
-def _stable_record_key(record: dict[str, Any]) -> bytes:
-    return hashlib.sha256(_as_text(record.get("id")).encode("utf-8")).digest()
-
-
-def _prune_small_artists(
-    records: list[dict[str, Any]], min_per_artist: int
-) -> list[dict[str, Any]]:
-    artist_counts: dict[str, int] = defaultdict(int)
-    for record in records:
-        artist_counts[_as_text(record["artist_id"])] += 1
-    retained_artists = {
-        artist_id
-        for artist_id, count in artist_counts.items()
-        if count >= min_per_artist
-    }
-    return [
-        record
-        for record in records
-        if _as_text(record["artist_id"]) in retained_artists
-    ]
-
-
-def _balance_records(
-    records: list[dict[str, Any]],
-    label_field: str,
-    min_classes: int,
-    max_classes: int,
-    min_class_samples: int,
-    max_class_ratio: float,
-    max_per_artist: int,
-    min_per_artist: int,
-) -> list[dict[str, Any]]:
-    by_artist: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for record in records:
-        by_artist[_as_text(record["artist_id"])].append(record)
-
-    capped: list[dict[str, Any]] = []
-    for artist_records in by_artist.values():
-        capped.extend(
-            sorted(artist_records, key=_stable_record_key)[:max_per_artist]
-        )
-    capped = _prune_small_artists(capped, min_per_artist)
-
-    label_counts: dict[str, int] = defaultdict(int)
-    for record in capped:
-        label_counts[_as_text(record[label_field])] += 1
-    selected_labels = {
-        label
-        for label, _ in sorted(
-            (
-                (label, count)
-                for label, count in label_counts.items()
-                if count >= min_class_samples
-            ),
-            key=lambda item: (-item[1], item[0].casefold()),
-        )[:max_classes]
-    }
-    if len(selected_labels) < min_classes:
-        raise ValueError(
-            f"Only {len(selected_labels)} artwork types have at least "
-            f"{min_class_samples} artworks; at least {min_classes} are required."
-        )
-    balanced = [
-        record
-        for record in capped
-        if _as_text(record[label_field]) in selected_labels
-    ]
-    balanced = _prune_small_artists(balanced, min_per_artist)
-
-    while True:
-        label_counts = defaultdict(int)
-        for record in balanced:
-            label_counts[_as_text(record[label_field])] += 1
-        small_labels = {
-            label
-            for label, count in label_counts.items()
-            if count < min_class_samples
-        }
-        if small_labels:
-            balanced = [
-                record
-                for record in balanced
-                if _as_text(record[label_field]) not in small_labels
-            ]
-            balanced = _prune_small_artists(balanced, min_per_artist)
-            continue
-        if len(label_counts) < min_classes:
-            raise ValueError(
-                "Balancing left fewer than "
-                f"{min_classes} artwork types with at least "
-                f"{min_class_samples} artworks each."
-            )
-
-        smallest_count = min(label_counts.values())
-        largest_label, largest_count = min(
-            label_counts.items(), key=lambda item: (-item[1], item[0].casefold())
-        )
-        target_count = int(max_class_ratio * smallest_count)
-        if largest_count <= target_count:
-            return balanced
-
-        artist_records: dict[str, list[dict[str, Any]]] = defaultdict(list)
-        for record in balanced:
-            artist_records[_as_text(record["artist_id"])].append(record)
-        candidates = sorted(
-            (
-                (artist_id, artist_rows)
-                for artist_id, artist_rows in artist_records.items()
-                if any(
-                    _as_text(row[label_field]) == largest_label
-                    for row in artist_rows
-                )
-            ),
-            key=lambda item: (
-                -sum(_as_text(row[label_field]) == largest_label for row in item[1]),
-                item[0],
-            ),
-        )
-
-        removed_artist: str | None = None
-        for artist_id, rows in candidates:
-            contributions: dict[str, int] = defaultdict(int)
-            for row in rows:
-                contributions[_as_text(row[label_field])] += 1
-            if largest_count - contributions[largest_label] < min_class_samples:
-                continue
-            if any(
-                count - contributions.get(label, 0) < min_class_samples
-                for label, count in label_counts.items()
-                if label != largest_label
-            ):
-                continue
-            balanced = [
-                record
-                for record in balanced
-                if _as_text(record["artist_id"]) != artist_id
-            ]
-            removed_artist = artist_id
-            break
-        if removed_artist is not None:
-            balanced = _prune_small_artists(balanced, min_per_artist)
-            continue
-
-        removable_artist: str | None = None
-        removable_count = 0
-        for artist_id, rows in candidates:
-            own_label_rows = [
-                row for row in rows if _as_text(row[label_field]) == largest_label
-            ]
-            non_target_count = len(rows) - len(own_label_rows)
-            can_remove = min(len(own_label_rows), len(rows) - min_per_artist)
-            remaining_count = len(rows) - can_remove
-            if can_remove > removable_count and remaining_count >= min_per_artist:
-                removable_artist = artist_id
-                removable_count = can_remove
-        required_reduction = largest_count - target_count
-        if removable_artist is None or removable_count == 0:
-            raise ValueError(
-                "Could not meet the maximum class ratio without violating the "
-                f"{min_per_artist}-artworks-per-artist or {min_class_samples}-"
-                "artworks-per-class minimum."
-            )
-
-        rows = artist_records[removable_artist]
-        target_rows = sorted(
-            (row for row in rows if _as_text(row[label_field]) == largest_label),
-            key=_stable_record_key,
-        )
-        remove_count = min(required_reduction, removable_count)
-        remove_ids = {_as_text(row["id"]) for row in target_rows[:remove_count]}
-        balanced = [
-            record for record in balanced if _as_text(record["id"]) not in remove_ids
-        ]
-        balanced = _prune_small_artists(balanced, min_per_artist)
-
-
 def prepare_dataset(
     records: Iterable[dict[str, Any]],
     output_dir: Path,
@@ -547,12 +370,6 @@ def prepare_dataset(
     label_field: str,
     feature_limit: int,
     neighbors: int,
-    min_classes: int = 6,
-    max_classes: int = 8,
-    min_class_samples: int = 100,
-    max_class_ratio: float = 3.0,
-    max_per_artist: int = 200,
-    min_per_artist: int = 11,
     optional_feature_coverage: float = 0.5,
 ) -> dict[str, int]:
     if processed_limit < 2 or feature_limit < 1 or neighbors < 2:
@@ -560,16 +377,6 @@ def prepare_dataset(
             "processed_limit must be at least 2, feature_limit positive, "
             "and neighbors at least 2."
         )
-    if min_classes < 2 or max_classes < min_classes:
-        raise ValueError(
-            "max_classes must be at least min_classes, which must be 2 or more."
-        )
-    if min_class_samples < 1 or max_class_ratio <= 1:
-        raise ValueError(
-            "min_class_samples must be positive and max_class_ratio greater than 1."
-        )
-    if min_per_artist < 1 or max_per_artist < min_per_artist:
-        raise ValueError("max_per_artist must be at least min_per_artist.")
     if not 0 <= optional_feature_coverage <= 1:
         raise ValueError("optional_feature_coverage must be between 0 and 1.")
 
@@ -589,19 +396,9 @@ def prepare_dataset(
         usable.append(record)
 
     if len(usable) > processed_limit:
-        usable = sorted(usable, key=_stable_record_key)[:processed_limit]
+        usable = usable[:processed_limit]
         dropped += len(seen_ids) - len(usable)
-    selected = _balance_records(
-        usable,
-        label_field=label_field,
-        min_classes=min_classes,
-        max_classes=max_classes,
-        min_class_samples=min_class_samples,
-        max_class_ratio=max_class_ratio,
-        max_per_artist=max_per_artist,
-        min_per_artist=min_per_artist,
-    )
-    dropped += len(usable) - len(selected)
+    selected = usable
 
     if len(selected) < 2:
         raise ValueError(
@@ -762,9 +559,6 @@ def prepare_dataset(
         label: sum(_as_text(record[label_field]) == label for record in selected)
         for label in labels
     }
-    artist_counts: dict[str, int] = defaultdict(int)
-    for record in selected:
-        artist_counts[_as_text(record["artist_id"])] += 1
     metadata = {
         **result,
         "label_field": label_field,
@@ -772,16 +566,9 @@ def prepare_dataset(
         "optional_feature_coverage": feature_coverage,
         "min_optional_feature_coverage": optional_feature_coverage,
         "class_counts": label_counts,
-        "class_balance": {
-            "min_classes": min_classes,
-            "max_classes": max_classes,
-            "min_class_samples": min_class_samples,
-            "max_class_ratio": max_class_ratio,
-        },
-        "artist_limits": {
-            "min_artworks": min_per_artist,
-            "max_artworks": max_per_artist,
-            "largest_artist_count": max(artist_counts.values()),
+        "selection": {
+            "department_filtering": "none",
+            "processed_limit": processed_limit,
         },
         "edge_endpoints": {
             "source": "source_node_index/source_artwork_id",
@@ -819,7 +606,7 @@ def main() -> None:
     parser.add_argument(
         "--processed-limit",
         type=int,
-        default=21_000,
+        default=25_000,
         help="Maximum number of raw artworks considered during preprocessing.",
     )
     parser.add_argument(
@@ -835,12 +622,6 @@ def main() -> None:
         default=20,
         help="Maximum same-artist neighbors per artwork.",
     )
-    parser.add_argument("--max-classes", type=int, default=8)
-    parser.add_argument("--min-classes", type=int, default=6)
-    parser.add_argument("--min-class-samples", type=int, default=100)
-    parser.add_argument("--max-class-ratio", type=float, default=3.0)
-    parser.add_argument("--max-per-artist", type=int, default=200)
-    parser.add_argument("--min-per-artist", type=int, default=11)
     parser.add_argument("--optional-feature-coverage", type=float, default=0.5)
     parser.add_argument(
         "--output-dir",
@@ -857,14 +638,6 @@ def main() -> None:
         parser.error("--limit and --processed-limit must both be at least 2.")
     if args.feature_limit < 1 or args.neighbors < 2:
         parser.error("--feature-limit must be positive and --neighbors at least 2.")
-    if args.min_classes < 2 or args.max_classes < args.min_classes:
-        parser.error("--max-classes must be at least --min-classes.")
-    if args.min_class_samples < 1:
-        parser.error("--min-class-samples must be positive.")
-    if args.max_class_ratio <= 1:
-        parser.error("--max-class-ratio must be greater than 1.")
-    if args.min_per_artist < 1 or args.max_per_artist < args.min_per_artist:
-        parser.error("--max-per-artist must be at least --min-per-artist.")
     if not 0 <= args.optional_feature_coverage <= 1:
         parser.error("--optional-feature-coverage must be between 0 and 1.")
 
@@ -889,12 +662,6 @@ def main() -> None:
         args.label_field,
         args.feature_limit,
         args.neighbors,
-        args.min_classes,
-        args.max_classes,
-        args.min_class_samples,
-        args.max_class_ratio,
-        args.max_per_artist,
-        args.min_per_artist,
         args.optional_feature_coverage,
     )
     print(json.dumps(result, indent=2, ensure_ascii=False))
