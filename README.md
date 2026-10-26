@@ -29,7 +29,7 @@ The code takes an input graph in a txt file. Sample graphs for the **Cora**, **C
 
 ### Art Institute of Chicago
 
-To crawl 25,000 unique artworks with artist IDs, titles, and artwork-type labels, then prepare up to 21,000 of them:
+To crawl 25,000 unique artworks with artist IDs, titles, artwork-type labels, and department labels, then prepare up to 21,000 of them:
 
 ```powershell
 python crawl_artic_cdnmf.py
@@ -42,21 +42,21 @@ python crawl_artic_cdnmf.py --stage crawl
 python crawl_artic_cdnmf.py --stage preprocess
 ```
 
-During crawling, the script scans API pages and saves unique artworks with a valid ID, `artist_id`, title, and non-empty `artwork_type_title`. It continues paging until it has up to 25,000 records or reaches the end of the API collection. The complete crawl is saved as `artworks_raw.csv`; progress is saved after every page in `artworks_raw.checkpoint.json`. If interrupted, run the crawl stage again with the same output path and target to resume from the next API page. Do not delete or edit only one of the CSV/checkpoint files while resuming.
+During crawling, the script scans API pages and saves unique artworks with a valid ID, `artist_id`, title, and non-empty selected label (`department_title` by default). It continues paging until it has up to 25,000 records or reaches the end of the API collection. The complete crawl is saved as `artworks_raw.csv`; progress is saved after every page in `artworks_raw.checkpoint.json`. If interrupted, run the crawl stage again with the same output path and target to resume from the next API page. Do not delete or edit only one of the CSV/checkpoint files while resuming.
 
 If the API returns HTTP 403 with a Cloudflare challenge, the current runtime/network is being blocked; retries and browser-like request headers do not resolve that server-side access restriction. Run the crawl on a network/runtime that can access `api.artic.edu`, then copy the raw CSV to the target environment and preprocess it with `python crawl_artic_cdnmf.py --stage preprocess --input-csv <path-to-artworks_raw.csv>`.
 
-Preprocessing uses the top 6–8 artwork types with at least 100 samples, and iteratively removes classes/artists that no longer satisfy the thresholds. The largest retained class is capped at 3 times the smallest class. An artist contributes at most 200 artworks, and each retained artist has at least 11 artworks. The default text features are `material_titles`, `technique_titles`, `place_of_origin`, and `medium_display`; whichever of `subject_titles` or `style_titles` has higher coverage is added if it reaches 50% coverage. `title` and `artist_title` are retained as metadata but are not input features. Unicode NFKC, HTML entity decoding, case-folding, HTML-tag/punctuation removal, and whitespace normalization are applied before TF-IDF. The fixed evaluation label is `artwork_type_title`, excluded from input features.
+Preprocessing defaults to `department_title`, selecting the top 6–8 departments with at least 100 samples and iteratively removing classes/artists that no longer satisfy the thresholds. Use `--label-field artwork_type_title` to instead evaluate artwork types. The largest retained class is capped at 3 times the smallest class. An artist contributes at most 200 artworks, and each retained artist has at least 11 artworks. The default text features are `material_titles`, `technique_titles`, `place_of_origin`, and `medium_display`; whichever of `subject_titles` or `style_titles` has higher coverage is added if it reaches 50% coverage. `title`, `artist_title`, `department_title`, and `artwork_type_title` are retained as metadata but are not input features. Unicode NFKC, HTML entity decoding, case-folding, HTML-tag/punctuation removal, and whitespace normalization are applied before TF-IDF.
 
 The graph connects works by the same artist, with no more than 20 neighbors per node. `walks.txt` contains the same author-based graph pairs for the model's smoothness term; it does not run expensive full-corpus random walks. CSV outputs include `artworks_raw.csv`, `artworks.csv`, `nodes.csv`, `edges.csv`, and `label_mapping.csv`; `metadata.json` summarizes the dataset, including retained class sizes and feature coverage. `nodes.csv` maps each `node_index` to the artwork ID, artist ID, title, artist title, and label. `edges.csv` stores endpoints of undirected same-artist links. CDNMF also needs `edges.txt`, `features.txt`, `group.txt`, and `walks.txt`, so these compatibility files remain in the output directory alongside CSVs. If the available data cannot meet the class/artist thresholds, preprocessing reports an error instead of silently producing an invalid dataset.
 
-To prepare a smaller dataset from the saved crawl for the current model:
+To prepare the department-label dataset from the existing crawl without overwriting the artwork-type dataset:
 
 ```powershell
-python crawl_artic_cdnmf.py --stage preprocess --input-csv Database\artic_25000\artworks_raw.csv --output-dir Database\artic_2000 --processed-limit 2000
+python crawl_artic_cdnmf.py --stage preprocess --input-csv Database\artic_25000\artworks_raw.csv --output-dir Database\artic_department_25000 --label-field department_title
 ```
 
-To train CDNMF on the prepared Art Institute dataset, open `run_artic_cdnmf.ipynb` from the repository root and run its cells in order. It reads `Database/artic_25000`, automatically creates pretraining parameters on the first run, and saves model weights, per-artwork community assignments, and metrics under `Database/artic_25000/model_results`. Defaults are one run and 100 epochs; adjust `RUNS` and `EPOCHS` in the notebook for longer experiments. The graph uses `k` equal to the number of retained artwork types.
+To train CDNMF on the department-label dataset, open `run_artic_cdnmf.ipynb` from the repository root and run its cells in order. It reads `Database/artic_department_25000`, automatically creates pretraining parameters on the first run, and saves model weights, per-artwork community assignments, and metrics under `Database/artic_department_25000/model_results`. Defaults are ten runs and 100 epochs; adjust `RUNS` and `EPOCHS` in the notebook for longer experiments. The graph uses `k` equal to the number of retained departments.
 
 **Memory limitation:** the current CDNMF implementation materializes dense node-by-node matrices and runs full-batch NMF. The 21,000-node export is suitable as a prepared dataset, but the existing model is not practical to train on all of it; use a smaller prepared subset or first replace the model with a sparse/mini-batch implementation. The script does not claim a higher evaluation score; scores depend on the data and training setup.
 

@@ -101,13 +101,15 @@ def _csv_row(record: dict[str, Any]) -> dict[str, str]:
     return row
 
 
-def _has_required_artwork_data(record: dict[str, Any]) -> bool:
+def _has_required_artwork_data(
+    record: dict[str, Any], label_field: str = "artwork_type_title"
+) -> bool:
     artwork_id = _as_text(record.get("id"))
     if not artwork_id.isdigit():
         return False
     return all(
         _as_text(record.get(field))
-        for field in ("artist_id", "title", "artwork_type_title")
+        for field in ("artist_id", "title", label_field)
     )
 
 
@@ -203,7 +205,9 @@ def _existing_artwork_ids(raw_path: Path) -> set[str]:
         }
 
 
-def crawl_artworks(limit: int, raw_path: Path) -> int:
+def crawl_artworks(
+    limit: int, raw_path: Path, label_field: str = "artwork_type_title"
+) -> int:
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     checkpoint_path = raw_path.with_suffix(".checkpoint.json")
     checkpoint = _read_crawl_checkpoint(checkpoint_path)
@@ -270,7 +274,7 @@ def crawl_artworks(limit: int, raw_path: Path) -> int:
                 break
             for record in records:
                 scanned += 1
-                if not _has_required_artwork_data(record):
+                if not _has_required_artwork_data(record, label_field):
                     continue
                 artwork_id = _as_text(record["id"])
                 if artwork_id in seen_ids:
@@ -575,7 +579,7 @@ def prepare_dataset(
     for record in records:
         artwork_id = _as_text(record.get("id"))
         label = _as_text(record.get(label_field))
-        if not _has_required_artwork_data(record) or not label:
+        if not _has_required_artwork_data(record, label_field) or not label:
             dropped += 1
             continue
         if artwork_id in seen_ids:
@@ -685,6 +689,7 @@ def prepare_dataset(
             "artist_id": _as_text(record.get("artist_id")),
             "title": _as_text(record.get("title")),
             "artist_title": _as_text(record.get("artist_title")),
+            "department_title": _as_text(record.get("department_title")),
             "label_id": label_ids[_as_text(record[label_field])],
             "artwork_type_title": _as_text(record.get("artwork_type_title")),
         }
@@ -819,8 +824,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--label-field",
-        choices=("artwork_type_title",),
-        default="artwork_type_title",
+        choices=("artwork_type_title", "department_title"),
+        default="department_title",
         help="Artwork category used as the evaluation label.",
     )
     parser.add_argument("--feature-limit", type=int, default=128)
@@ -840,7 +845,7 @@ def main() -> None:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("Database") / "artic_25000",
+        default=Path("Database") / "artic_department_25000",
     )
     parser.add_argument(
         "--input-csv",
@@ -866,7 +871,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     raw_path = args.output_dir / "artworks_raw.csv"
     if args.stage in ("all", "crawl"):
-        downloaded = crawl_artworks(args.limit, raw_path)
+        downloaded = crawl_artworks(args.limit, raw_path, args.label_field)
         LOGGER.info("Saved %s complete raw records to %s", downloaded, raw_path)
     if args.stage == "crawl":
         return
