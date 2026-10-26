@@ -56,6 +56,8 @@ To prepare a smaller dataset from the saved crawl for the current model:
 python crawl_artic_cdnmf.py --stage preprocess --input-csv Database\artic_25000\artworks_raw.csv --output-dir Database\artic_2000 --processed-limit 2000
 ```
 
+To train CDNMF on the prepared Art Institute dataset, open `run_artic_cdnmf.ipynb` from the repository root and run its cells in order. It reads `Database/artic_25000`, automatically creates pretraining parameters on the first run, and saves model weights, per-artwork community assignments, and metrics under `Database/artic_25000/model_results`. Defaults are one run and 100 epochs; adjust `RUNS` and `EPOCHS` in the notebook for longer experiments. The graph uses `k` equal to the number of retained artwork types.
+
 **Memory limitation:** the current CDNMF implementation materializes dense node-by-node matrices and runs full-batch NMF. The 21,000-node export is suitable as a prepared dataset, but the existing model is not practical to train on all of it; use a smaller prepared subset or first replace the model with a sparse/mini-batch implementation. The script does not claim a higher evaluation score; scores depend on the data and training setup.
 
 ### arXiv author-overlap graph
