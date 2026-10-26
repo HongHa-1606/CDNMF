@@ -132,6 +132,22 @@ def _api_page(page: int, limit: int, retries: int = 5) -> dict[str, Any]:
             return payload
         except HTTPError as error:
             if error.code != 429 and error.code < 500:
+                if error.code == 403:
+                    response_body = error.read(2048).decode("utf-8", errors="replace")
+                    cloudflare_block = (
+                        "cloudflare" in response_body.casefold()
+                        or "just a moment" in response_body.casefold()
+                        or bool(error.headers.get("cf-ray"))
+                    )
+                    if cloudflare_block:
+                        raise RuntimeError(
+                            "Art Institute API returned HTTP 403 with a Cloudflare "
+                            "challenge. This is an access block for the current "
+                            "network/runtime; changing request headers or retrying "
+                            "will not resolve it. Run the crawl from a network where "
+                            "api.artic.edu is accessible, then use the resulting CSV "
+                            "with --stage preprocess --input-csv <path>."
+                        ) from error
                 raise RuntimeError(
                     f"Art Institute API returned HTTP {error.code} on page {page}."
                 ) from error
