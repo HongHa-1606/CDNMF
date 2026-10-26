@@ -63,6 +63,7 @@ if __name__=='__main__':
         'negc': 400,
         'rec': 1,
         'r': 3,
+        'walk_weight': 1.0,
         'learning_rate': 0.01,
         'weight_decay': 0.00001,
         'epoch': 550,
@@ -103,7 +104,6 @@ if __name__=='__main__':
         # print(acc)
     print('ACC: ', np.mean(M), '; NMI: ', np.mean(N))
     print("=== Final ===")
-
 
 
 

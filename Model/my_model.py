@@ -26,6 +26,7 @@ class Model(torch.nn.Module):
         self.negc = config['negc']
         self.rec = config['rec']
         self.r = config['r']
+        self.walk_weight = config.get('walk_weight', 0.0)
         self.model_path = config['model_path']
 
         self.fc1 = torch.nn.Linear(self.net_shape[-1], self.net_shape[1])
@@ -179,6 +180,27 @@ class Model(torch.nn.Module):
         # TX = torch.mm(self.V['att' + str(i)], L)
         MX = torch.mm(torch.mm(self.V['att' + str(i)], L), self.V['att' + str(i)].t())
         loss4 = torch.trace(M) + torch.trace(MX)
+        if self.walk_weight > 0 and hasattr(graph, 'W'):
+            walk_degree = graph.W.sum(dim=1)
+            active_nodes = walk_degree > 0
+            if torch.any(active_nodes):
+                inv_sqrt_degree = torch.zeros_like(walk_degree)
+                inv_sqrt_degree[active_nodes] = torch.rsqrt(walk_degree[active_nodes])
+                walk_embedding = self.V['net' + str(len(self.net_shape) - 1)].t()
+                normalized_embedding = walk_embedding * inv_sqrt_degree.unsqueeze(1)
+                propagated_embedding = torch.mm(graph.W, normalized_embedding)
+                walk_smoothness = (
+                    walk_embedding[active_nodes].square().sum()
+                    - (normalized_embedding * propagated_embedding).sum()
+                )
+                walk_embedding_att = self.V['att' + str(len(self.att_shape) - 1)].t()
+                normalized_embedding_att = walk_embedding_att * inv_sqrt_degree.unsqueeze(1)
+                propagated_embedding_att = torch.mm(graph.W, normalized_embedding_att)
+                walk_smoothness = walk_smoothness + (
+                    walk_embedding_att[active_nodes].square().sum()
+                    - (normalized_embedding_att * propagated_embedding_att).sum()
+                )
+                loss4 = loss4 + self.walk_weight * walk_smoothness
         # loss4 = torch.trace(M)
         # print('done:loss4', loss4)
 
@@ -211,7 +233,6 @@ class Model(torch.nn.Module):
 
 
         return loss, loss1, loss2, loss3, loss4, loss5
-
 
 
 
