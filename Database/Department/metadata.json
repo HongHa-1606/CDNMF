@@ -1,0 +1,27 @@
+{
+  "processed_artworks": 6102,
+  "dropped_records": 0,
+  "classes": 5,
+  "features": 128,
+  "edges": 38398,
+  "artists": 511,
+  "label_field": "department_title",
+  "feature_fields": [
+    "medium_display",
+    "classification_title"
+  ],
+  "class_counts": {
+    "Arts of the Americas": 943,
+    "Arts of Asia": 1400,
+    "Architecture and Design": 954,
+    "Prints and Drawings": 1406,
+    "Photography and Media": 1399
+  },
+  "artist_limits": {
+    "min_artworks": 5,
+    "max_artworks": 200,
+    "largest_artist_count": 179
+  },
+  "graph_strategy": "same_artist_cyclic_neighbors",
+  "created_at_utc": "2026-10-27T11:19:56.189167+00:00"
+}
